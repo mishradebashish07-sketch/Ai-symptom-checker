@@ -4,25 +4,146 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Medical Symptom Checker</title>
-    <link rel="icon" href="https://fav.farm🩺" />
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #0e1117;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { max-width: 700px; width: 100%; background: #1e293b; padding: 30px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h1 { margin-top: 0; color: #38bdf8; display: flex; align-items: center; gap: 10px; }
+        p.sub { color: #94a3b8; margin-bottom: 25px; }
+        label { font-weight: 600; display: block; margin-bottom: 8px; color: #e2e8f0; }
+        textarea { width: 100%; height: 100px; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; font-size: 15px; margin-bottom: 20px; resize: vertical; }
+        .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 25px; }
+        .chip { background: #334155; color: #cbd5e1; padding: 6px 12px; border-radius: 20px; font-size: 13px; cursor: pointer; user-select: none; transition: 0.2s; }
+        .chip.active { background: #0284c7; color: white; font-weight: 600; }
+        button { width: 100%; padding: 14px; background: #0ea5e9; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #0284c7; }
+        #results { margin-top: 25px; display: none; }
+        .alert { background: #7f1d1d; border-left: 5px solid #ef4444; padding: 12px; border-radius: 6px; margin-bottom: 15px; display: none; }
+        .detected { background: #064e3b; color: #a7f3d0; padding: 10px 14px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+        .disease-card { margin-bottom: 15px; }
+        .disease-header { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: 600; }
+        .bar-bg { width: 100%; background: #334155; height: 10px; border-radius: 5px; overflow: hidden; }
+        .bar-fill { height: 100%; background: linear-gradient(90deg, #38bdf8, #818cf8); border-radius: 5px; }
+        .disclaimer { margin-top: 25px; font-size: 12px; color: #94a3b8; border-top: 1px solid #334155; padding-top: 15px; }
     </style>
 </head>
 <body>
-    <!-- IMPORTANT: Replace the link below with your exact Streamlit app URL + ?embed=true -->
-    <iframe src="https://aaai-symptom-checker-tk6aqjwtvsat5u56e3yriq.streamlit.app/?embed=true"></iframe>
+<div class="container">
+    <h1>🩺 Medical AI Symptom Checker</h1>
+    <p class="sub">Describe how you are feeling in plain English, or click on symptoms below to run an instant diagnostic analysis.</p>
+
+    <label>1. Describe Your Symptoms:</label>
+    <textarea id="userInput" placeholder="e.g., I have a high fever, terrible headache, joint pain, and chills..."></textarea>
+
+    <label>2. Or Click Symptoms Manually:</label>
+    <div class="chips" id="symptomChips"></div>
+
+    <button onclick="analyzeSymptoms()">🔍 Analyze Symptoms</button>
+
+    <div id="results">
+        <div class="alert" id="triageAlert">🚨 <strong>HIGH URGENCY ALERT:</strong> You reported chest pain or breathing difficulty. Please seek immediate medical care.</div>
+        <div class="detected" id="detectedBox"></div>
+        <h3>🏥 Top Possible Conditions</h3>
+        <div id="predictionsList"></div>
+        <div class="disclaimer">⚠️ <strong>Medical Disclaimer:</strong> This is an AI trial prototype for educational purposes only. Always consult a qualified doctor for medical advice.</div>
+    </div>
+</div>
+
+<script>
+const symptomsDB = {
+    "high_fever": { name: "High Fever", words: new Array("fever", "hot", "temperature", "burning") },
+    "chills": { name: "Chills", words: new Array("chills", "shivering", "freezing") },
+    "cough": { name: "Cough", words: new Array("cough", "coughing", "hack") },
+    "runny_nose": { name: "Runny Nose", words: new Array("runny nose", "stuffy", "mucus", "cold") },
+    "continuous_sneezing": { name: "Sneezing", words: new Array("sneezing", "sneeze") },
+    "breathlessness": { name: "Shortness of Breath", words: new Array("breath", "breathe", "breathless", "breathing") },
+    "stomach_pain": { name: "Stomach Pain", words: new Array("stomach", "belly", "tummy", "cramps", "abdominal") },
+    "vomiting": { name: "Vomiting", words: new Array("vomit", "vomiting", "throw up", "puking") },
+    "nausea": { name: "Nausea", words: new Array("nausea", "nauseous", "feel sick") },
+    "headache": { name: "Headache", words: new Array("headache", "head hurts", "migraine") },
+    "fatigue": { name: "Fatigue", words: new Array("tired", "exhausted", "weak", "fatigue") },
+    "itching": { name: "Itching", words: new Array("itch", "itchy", "scratching") },
+    "skin_rash": { name: "Skin Rash", words: new Array("rash", "red spots", "bumps") },
+    "joint_pain": { name: "Joint Pain", words: new Array("joint", "knees hurt", "elbows") },
+    "muscle_pain": { name: "Muscle Pain", words: new Array("body ache", "muscle", "sore") },
+    "diarrhoea": { name: "Diarrhoea", words: new Array("diarrhea", "loose motion", "watery") },
+    "chest_pain": { name: "Chest Pain", words: new Array("chest pain", "chest hurts", "heavy chest") },
+    "dizziness": { name: "Dizziness", words: new Array("dizzy", "spinning", "lightheaded") },
+    "sweating": { name: "Sweating", words: new Array("sweat", "sweating") },
+    "loss_of_appetite": { name: "Loss of Appetite", words: new Array("not hungry", "no appetite") }
+};
+
+const diseasesDB = {
+    "Common Cold": new Array("cough", "runny_nose", "continuous_sneezing", "headache", "fatigue"),
+    "Dengue": new Array("high_fever", "headache", "joint_pain", "muscle_pain", "skin_rash", "vomiting", "fatigue"),
+    "Malaria": new Array("high_fever", "chills", "sweating", "headache", "nausea", "vomiting", "muscle_pain"),
+    "Typhoid": new Array("high_fever", "stomach_pain", "headache", "fatigue", "diarrhoea", "loss_of_appetite"),
+    "Gastroenteritis (Food Poisoning)": new Array("stomach_pain", "vomiting", "nausea", "diarrhoea", "fatigue"),
+    "Fungal Infection / Allergy": new Array("itching", "skin_rash"),
+    "Migraine": new Array("headache", "nausea", "dizziness", "vomiting"),
+    "Bronchial Asthma / Pneumonia": new Array("cough", "breathlessness", "high_fever", "chest_pain", "fatigue"),
+    "Heart Attack (Emergency Warning)": new Array("chest_pain", "breathlessness", "sweating", "dizziness", "nausea"),
+    "Hypertension / Vertigo": new Array("headache", "dizziness", "chest_pain")
+};
+
+const selectedChips = new Set();
+const chipsContainer = document.getElementById("symptomChips");
+
+Object.keys(symptomsDB).forEach(key => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.innerText = symptomsDB[key].name;
+    chip.onclick = () => {
+        if (selectedChips.has(key)) { selectedChips.delete(key); chip.classList.remove("active"); }
+        else { selectedChips.add(key); chip.classList.add("active"); }
+    };
+    chipsContainer.appendChild(chip);
+});
+
+function analyzeSymptoms() {
+    const text = document.getElementById("userInput").value.toLowerCase();
+    const detected = new Set(selectedChips);
+
+    Object.keys(symptomsDB).forEach(key => {
+        symptomsDB[key].words.forEach(w => { if (text.includes(w)) detected.add(key); });
+    });
+
+    const resultsDiv = document.getElementById("results");
+    if (detected.size === 0) {
+        alert("Please describe your symptoms or click at least one symptom tag!");
+        return;
+    }
+
+    resultsDiv.style.display = "block";
+    document.getElementById("triageAlert").style.display = (detected.has("chest_pain") || detected.has("breathlessness")) ? "block" : "none";
+    document.getElementById("detectedBox").innerHTML = "<strong>🧠 Detected Symptoms:</strong> " + Array.from(detected).map(k => symptomsDB[k].name).join(", ");
+
+    let scores = new Array();
+    let totalScore = 0;
+    Object.keys(diseasesDB).forEach(disease => {
+        const profile = diseasesDB[disease];
+        let matches = 0;
+        detected.forEach(s => { if (profile.includes(s)) matches++; });
+        if (matches > 0) {
+            const score = (matches / profile.length) * (matches / detected.size);
+            scores.push({ disease, score });
+            totalScore += score;
+        }
+    });
+
+    scores.sort((a, b) => b.score - a.score);
+    const listDiv = document.getElementById("predictionsList");
+    listDiv.innerHTML = "";
+
+    scores.slice(0, 5).forEach(item => {
+        const pct = Math.min(98, Math.round((item.score / (totalScore || 1)) * 100));
+        listDiv.innerHTML += `
+            <div class="disease-card">
+                <div class="disease-header"><span>${item.disease}</span><span>${pct}% Match</span></div>
+                <div class="bar-bg"><div class="bar-fill" style="width: ${pct}%"></div></div>
+            </div>`;
+    });
+}
+</script>
 </body>
 </html>
